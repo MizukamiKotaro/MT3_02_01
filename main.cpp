@@ -8,6 +8,8 @@
 #include"Sphere.h"
 #include<imgui.h>
 #include"Line.h"
+#include"Collision.h"
+#include"Camera.h"
 
 const char kWindowTitle[] = "学籍番号";
 
@@ -29,28 +31,21 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR lpCmdLine, _In
 
 	float speed = 0.01f;
 
-	MyVector3 cameraTranslate{ 0.0f,1.9f,-6.49f };
-	MyVector3 cameraRotate{ 0.26f,0.0f,0.0f };
+	Camera* camera = new Camera();
+	camera->Initialize({ 0.0f,1.9f,-6.49f }, { 0.26f,0.0f,0.0f });
 
 	MyMatrix4x4 originMatrix = MyMatrix4x4::MakeAffinMatrix({ 1.0f,1.0f,1.0f }, { 0.0f,0.0f,0.0f }, { 0.0f,0.0f,0.0f });
 	
-	Segment segment{ {-2.0f,-1.0f,0.0f},{3.0f,2.0f,2.0f} };
-	MyVector3 point{ -1.5f,0.6f,0.6f };
+	Sphere s1 = {
+		{-1.0f,0.0f,0.0f},{1.0f,1.0f,1.0f},{},0.8f
+	};
 
-	MyVector3 project = Calc::Project(point - segment.origin, segment.diff);
-	MyVector3 closestPoint = Calc::ClosestPoint(point, segment);
-
-	Sphere pointSphere{ point,{0.01f,0.01f,0.01f},{},1.0f };
-	Sphere closestPointSphere{ closestPoint,{0.01f,0.01f,0.01f},{},1.0f };
-
-	MyMatrix4x4 cameraMatrix = MyMatrix4x4::MakeAffinMatrix({ 1.0f,1.0f,1.0f }, cameraRotate, cameraTranslate);
-	MyMatrix4x4 viewMatrix = MyMatrix4x4::Inverse(cameraMatrix);
+	Sphere s2 = {
+		{1.0f,0.0f,1.0f},{1.0f,1.0f,1.0f},{},0.5f
+	};
+	
 	MyMatrix4x4 projectionMatrix = MyMatrix4x4::MakePerspectiveFovMatrix(0.45f, float(kWindowWidth) / float(kWindowHeight), 0.1f, 100.0f);
-	MyMatrix4x4 viewProjectionMatrix = MyMatrix4x4::Multiply(viewMatrix, projectionMatrix);
 	MyMatrix4x4 viewportMatrix = MyMatrix4x4::MakeViewportMatrix(0.0f, 0.0f, float(kWindowWidth), float(kWindowHeight), 0.0f, 1.0f);
-
-	MyVector3 start = MyMatrix4x4::Transform(MyMatrix4x4::Transform(segment.origin, viewProjectionMatrix), viewportMatrix);
-	MyVector3 end = MyMatrix4x4::Transform(MyMatrix4x4::Transform(segment.origin + segment.diff, viewProjectionMatrix), viewportMatrix);
 
 	// ウィンドウの×ボタンが押されるまでループ
 	while (Novice::ProcessMessage() == 0) {
@@ -66,11 +61,28 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR lpCmdLine, _In
 		///
 		
 		ImGui::Begin("Window");
-		ImGui::InputFloat3("Point", &point.x, "%.3f", ImGuiInputTextFlags_ReadOnly);
-		ImGui::InputFloat3("SegmentOrigin", &segment.origin.x, "%.3f", ImGuiInputTextFlags_ReadOnly);
-		ImGui::InputFloat3("SegmentDiff", &segment.diff.x, "%.3f", ImGuiInputTextFlags_ReadOnly);
-		ImGui::InputFloat3("Project", &project.x, "%.3f", ImGuiInputTextFlags_ReadOnly);
+		ImGui::Text("R : Reset");
+		ImGui::SliderFloat3("s1 Center", &s1.center_.x, -10.0f, 10.0f);
+		ImGui::SliderFloat("s1 radius", &s1.radius_, 0.0f, 3.0f);
+		ImGui::SliderFloat3("s2 Center", &s2.center_.x, -10.0f, 10.0f);
+		ImGui::SliderFloat("s2 radius", &s2.radius_, 0.0f, 3.0f);
 		ImGui::End();
+
+		if (keys[DIK_R]) {
+			s1 = {
+				{-1.0f,0.0f,0.0f},{1.0f,1.0f,1.0f},{},0.8f
+			};
+			s2 = {
+				{1.0f,0.0f,1.0f},{1.0f,1.0f,1.0f},{},0.5f
+			};
+			camera->Initialize({ 0.0f,1.9f,-6.49f }, { 0.26f,0.0f,0.0f });
+		}
+
+		camera->Update(keys, preKeys);
+
+		MyMatrix4x4 cameraMatrix = MyMatrix4x4::MakeAffinMatrix(camera->GetScale(), camera->GetRotate(), camera->GetTranslate());
+		MyMatrix4x4 viewMatrix = MyMatrix4x4::Inverse(cameraMatrix);
+		MyMatrix4x4 viewProjectionMatrix = MyMatrix4x4::Multiply(viewMatrix, projectionMatrix);
 
 		///
 		/// ↑更新処理ここまで
@@ -84,10 +96,16 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR lpCmdLine, _In
 
 		Grid::DrawGrid(viewProjectionMatrix, viewportMatrix);
 
-		Sphere::DrawSphere(pointSphere, viewProjectionMatrix, viewportMatrix, 0xFF0000FF);
-		Sphere::DrawSphere(closestPointSphere, viewProjectionMatrix, viewportMatrix, 0x000000FF);
+		if (Collision::IsCollision(s1, s2)) {
+			Sphere::DrawSphere(s1, viewProjectionMatrix, viewportMatrix, 0xFF0000FF);
+		}
+		else {
+			Sphere::DrawSphere(s1, viewProjectionMatrix, viewportMatrix, 0xFFFFFFFF);
+		}
+		
+		Sphere::DrawSphere(s2, viewProjectionMatrix, viewportMatrix, 0xFFFFFFFF);
 	
-		Novice::DrawLine(int(start.x), int(start.y), int(end.x), int(end.y), 0xFFFFFFFF);
+		
 
 		///
 		/// ↑描画処理ここまで
@@ -101,6 +119,8 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR lpCmdLine, _In
 			break;
 		}
 	}
+
+	delete camera;
 
 	// ライブラリの終了
 	Novice::Finalize();
